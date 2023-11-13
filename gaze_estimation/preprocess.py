@@ -101,26 +101,17 @@ def save_one_person(person_id: str, data_dir: pathlib.Path,
         f_output.create_dataset(f'{person_id}/gaze', data=gazes)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--output-dir', '-o', type=str, required=True)
-    args = parser.parse_args()
-
-    output_dir = pathlib.Path(args.output_dir)
+def process_dataset(config):
+    output_dir = pathlib.Path(config.dataset.processed_dataset_output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
-    output_path = output_dir / 'MPIIGaze.h5'
+    output_path = pathlib.Path(config.dataset.processed_dataset_path)
     if output_path.exists():
         raise ValueError(f'{output_path} already exists.')
 
-    dataset_dir = pathlib.Path(args.dataset)
+    dataset_dir = pathlib.Path(config.dataset.dataset_dir) / 'MPIIGaze'
 
     for person_id in tqdm.tqdm(range(15)):
         person_id = f'p{person_id:02}'
         data_dir = dataset_dir / 'Data' / 'Normalized'
         eval_dir = dataset_dir / 'Evaluation Subset' / 'sample list for eye image'
         save_one_person(person_id, data_dir, eval_dir, output_path)
-
-
-if __name__ == '__main__':
-    main()

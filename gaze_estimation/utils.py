@@ -1,13 +1,14 @@
-import argparse
 import pathlib
 import random
 from typing import Tuple
 
+import requests
 import numpy as np
 import torch
-import yacs.config
-
-from .config import get_default_config
+import os
+import tqdm
+import tarfile
+from .preprocess import process_dataset
 
 
 def set_seeds(seed: int) -> None:
@@ -17,36 +18,50 @@ def set_seeds(seed: int) -> None:
     torch.cuda.manual_seed(seed)
 
 
+def load_and_process_dataset(config) -> None:
+    if not os.path.isdir(config.dataset.dataset_dir):
+        os.mkdir(config.dataset.dataset_dir)
+
+    path = os.path.join(config.dataset.dataset_dir, 'data.tar.gz')
+    if not os.path.exists(path):
+        url = "https://datasets.d2.mpi-inf.mpg.de/MPIIGaze/MPIIGaze.tar.gz"
+        print("Downloading dataset...")
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            print(r.headers)
+            with open(path, 'wb') as f:
+                with tqdm.tqdm(total=float(r.headers['Content-Length'])) as pbar:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        # If you have chunk encoded response uncomment if
+                        # and set chunk_size parameter to None.
+                        # if chunk:
+                        f.write(chunk)
+                        pbar.update(len(chunk))
+        f.close()
+
+    # Next, we need to unzip the file.
+    if not os.path.exists(os.path.join(config.dataset.dataset_dir, 'MPIIGaze')):
+        print("Extracting zip file...")
+        file = tarfile.open(path, mode='r')
+        all_members = file.getmembers()
+        total_members = len(file.getmembers())
+        with tqdm.tqdm(total=total_members) as pbar:
+            for member in all_members:
+                file.extract(member, config.dataset.dataset_dir)
+                pbar.update(1)
+
+    # Finally, pre-process the dataset.
+    if not os.path.exists(config.dataset.processed_dataset_path):
+        print("Pre-Processing the dataset...")
+        process_dataset(config)
+
+
 def setup_cudnn(config) -> None:
     torch.backends.cudnn.benchmark = config.cudnn.benchmark
     torch.backends.cudnn.deterministic = config.cudnn.deterministic
 
 
-def load_config() -> yacs.config.CfgNode:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str)
-    parser.add_argument('options', default=None, nargs=argparse.REMAINDER)
-    args = parser.parse_args()
-
-    config = get_default_config()
-    if args.config is not None:
-        config.merge_from_file(args.config)
-    config.merge_from_list(args.options)
-    if not torch.cuda.is_available():
-        config.device = 'cpu'
-        config.train.train_dataloader.pin_memory = False
-        config.train.val_dataloader.pin_memory = False
-        config.test.dataloader.pin_memory = False
-    config.freeze()
-    return config
-
-
-def save_config(config: yacs.config.CfgNode, output_dir: pathlib.Path) -> None:
-    with open(output_dir / 'config.yaml', 'w') as f:
-        f.write(str(config))
-
-
-def create_train_output_dir(config: yacs.config.CfgNode) -> pathlib.Path:
+def create_train_output_dir(config) -> pathlib.Path:
     output_root_dir = pathlib.Path(config.train.output_dir)
     if config.train.test_id != -1:
         output_dir = output_root_dir / f'{config.train.test_id:02}'

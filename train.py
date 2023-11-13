@@ -3,21 +3,18 @@
 import time
 
 import torch
-import torchvision.utils
+from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
-from gaze_estimation import (GazeEstimationMethod, create_dataloader,
-                             create_logger, create_loss, create_model,
-                             create_optimizer, create_scheduler,
-                             create_tensorboard_writer)
+from gaze_estimation import (create_dataloader, lenet)
 from gaze_estimation.utils import (AverageMeter, compute_angle_error,
-                                   create_train_output_dir, load_config,
-                                   save_config, set_seeds, setup_cudnn)
+                                   create_train_output_dir, set_seeds, setup_cudnn)
+from gaze_estimation.settings import get_settings
 
 
 def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
-          config, tensorboard_writer, logger):
-    logger.info(f'Train {epoch}')
+          config):
+    print(f'Train {epoch}')
 
     model.train()
 
@@ -27,11 +24,6 @@ def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
     angle_error_meter = AverageMeter()
     start = time.time()
     for step, (images, poses, gazes) in enumerate(train_loader):
-        if config.tensorboard.train_images and step == 0:
-            image = torchvision.utils.make_grid(images,
-                                                normalize=True,
-                                                scale_each=True)
-            tensorboard_writer.add_image('Train/Image', image, epoch)
 
         images = images.to(device)
         poses = poses.to(device)
@@ -39,12 +31,7 @@ def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
 
         optimizer.zero_grad()
 
-        if config.mode == GazeEstimationMethod.MPIIGaze.name:
-            outputs = model(images, poses)
-        elif config.mode == GazeEstimationMethod.MPIIFaceGaze.name:
-            outputs = model(images)
-        else:
-            raise ValueError
+        outputs = model(images, poses)
         loss = loss_function(outputs, gazes)
         loss.backward()
 
@@ -57,7 +44,7 @@ def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
         angle_error_meter.update(angle_error.item(), num)
 
         if step % config.train.log_period == 0:
-            logger.info(f'Epoch {epoch} '
+            print(f'Epoch {epoch} '
                         f'Step {step}/{len(train_loader)} '
                         f'lr {scheduler.get_last_lr()[0]:.6f} '
                         f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '
@@ -65,19 +52,11 @@ def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
                         f'({angle_error_meter.avg:.2f})')
 
     elapsed = time.time() - start
-    logger.info(f'Elapsed {elapsed:.2f}')
-
-    tensorboard_writer.add_scalar('Train/Loss', loss_meter.avg, epoch)
-    tensorboard_writer.add_scalar('Train/lr',
-                                  scheduler.get_last_lr()[0], epoch)
-    tensorboard_writer.add_scalar('Train/AngleError', angle_error_meter.avg,
-                                  epoch)
-    tensorboard_writer.add_scalar('Train/Time', elapsed, epoch)
+    print(f'Elapsed {elapsed:.2f}')
 
 
-def validate(epoch, model, loss_function, val_loader, config,
-             tensorboard_writer, logger):
-    logger.info(f'Val {epoch}')
+def validate(epoch, model, loss_function, val_loader, config):
+    print(f'Val {epoch}')
 
     model.eval()
 
@@ -89,22 +68,11 @@ def validate(epoch, model, loss_function, val_loader, config,
 
     with torch.no_grad():
         for step, (images, poses, gazes) in enumerate(val_loader):
-            if config.tensorboard.val_images and epoch == 0 and step == 0:
-                image = torchvision.utils.make_grid(images,
-                                                    normalize=True,
-                                                    scale_each=True)
-                tensorboard_writer.add_image('Val/Image', image, epoch)
-
             images = images.to(device)
             poses = poses.to(device)
             gazes = gazes.to(device)
 
-            if config.mode == GazeEstimationMethod.MPIIGaze.name:
-                outputs = model(images, poses)
-            elif config.mode == GazeEstimationMethod.MPIIFaceGaze.name:
-                outputs = model(images)
-            else:
-                raise ValueError
+            outputs = model(images, poses)
             loss = loss_function(outputs, gazes)
 
             angle_error = compute_angle_error(outputs, gazes).mean()
@@ -113,68 +81,55 @@ def validate(epoch, model, loss_function, val_loader, config,
             loss_meter.update(loss.item(), num)
             angle_error_meter.update(angle_error.item(), num)
 
-    logger.info(f'Epoch {epoch} '
-                f'loss {loss_meter.avg:.4f} '
-                f'angle error {angle_error_meter.avg:.2f}')
+    print(f'Epoch {epoch} '
+          f'loss {loss_meter.avg:.4f} '
+          f'angle error {angle_error_meter.avg:.2f}')
 
     elapsed = time.time() - start
-    logger.info(f'Elapsed {elapsed:.2f}')
-
-    if epoch > 0:
-        tensorboard_writer.add_scalar('Val/Loss', loss_meter.avg, epoch)
-        tensorboard_writer.add_scalar('Val/AngleError', angle_error_meter.avg,
-                                      epoch)
-    tensorboard_writer.add_scalar('Val/Time', elapsed, epoch)
-
-    if config.tensorboard.model_params:
-        for name, param in model.named_parameters():
-            tensorboard_writer.add_histogram(name, param, epoch)
+    print(f'Elapsed {elapsed:.2f}')
 
 
 def main():
-    config = load_config()
+    config = get_settings()
 
     set_seeds(config.train.seed)
     setup_cudnn(config)
 
     output_dir = create_train_output_dir(config)
-    save_config(config, output_dir)
-    logger = create_logger(name=__name__,
-                           output_dir=output_dir,
-                           filename='log.txt')
-    logger.info(config)
+    print(config)
 
     train_loader, val_loader = create_dataloader(config, is_train=True)
-    model = create_model(config)
-    loss_function = create_loss(config)
-    optimizer = create_optimizer(config, model)
-    scheduler = create_scheduler(config, optimizer)
+    model = lenet.Model().to(torch.device(config.device))
+    loss_function = nn.MSELoss(reduction='mean')
+    optimizer = torch.optim.SGD([{
+            'params': list(model.parameters()),
+            'weight_decay': config.train.weight_decay,
+        }], lr=config.train.base_lr, momentum=config.train.momentum, nesterov=config.train.nesterov)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=config.scheduler.milestones,
+            gamma=config.scheduler.lr_decay)
     checkpointer = Checkpointer(model,
                                 optimizer=optimizer,
                                 scheduler=scheduler,
                                 save_dir=output_dir.as_posix(),
                                 save_to_disk=True)
-    tensorboard_writer = create_tensorboard_writer(config, output_dir)
 
     if config.train.val_first:
-        validate(0, model, loss_function, val_loader, config,
-                 tensorboard_writer, logger)
+        validate(0, model, loss_function, val_loader, config)
 
     for epoch in range(1, config.scheduler.epochs + 1):
         train(epoch, model, optimizer, scheduler, loss_function, train_loader,
-              config, tensorboard_writer, logger)
+              config)
         scheduler.step()
 
         if epoch % config.train.val_period == 0:
-            validate(epoch, model, loss_function, val_loader, config,
-                     tensorboard_writer, logger)
+            validate(epoch, model, loss_function, val_loader, config)
 
         if (epoch % config.train.checkpoint_period == 0
                 or epoch == config.scheduler.epochs):
             checkpoint_config = {'epoch': epoch, 'config': config.as_dict()}
             checkpointer.save(f'checkpoint_{epoch:04d}', **checkpoint_config)
-
-    tensorboard_writer.close()
 
 
 if __name__ == '__main__':

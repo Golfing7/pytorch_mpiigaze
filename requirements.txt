@@ -1,4 +1,3 @@
-dlib
 fvcore
 h5py
 numpy
@@ -6,9 +5,7 @@ opencv-python
 pandas
 pyyaml
 scipy
-tensorboardX
-termcolor
 torch
+requests
 torchvision
 tqdm
-yacs

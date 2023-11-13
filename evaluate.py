@@ -6,9 +6,8 @@ import numpy as np
 import torch
 import tqdm
 
-from gaze_estimation import (GazeEstimationMethod, create_dataloader,
-                             create_model)
-from gaze_estimation.utils import compute_angle_error, load_config, save_config
+from gaze_estimation import (create_dataloader, lenet)
+from gaze_estimation.utils import compute_angle_error, load_config
 
 
 def test(model, test_loader, config):
@@ -23,12 +22,7 @@ def test(model, test_loader, config):
             poses = poses.to(device)
             gazes = gazes.to(device)
 
-            if config.mode == GazeEstimationMethod.MPIIGaze.name:
-                outputs = model(images, poses)
-            elif config.mode == GazeEstimationMethod.MPIIFaceGaze.name:
-                outputs = model(images)
-            else:
-                raise ValueError
+            outputs = model(images, poses)
             predictions.append(outputs.cpu())
             gts.append(gazes.cpu())
 
@@ -45,11 +39,10 @@ def main():
     checkpoint_name = pathlib.Path(config.test.checkpoint).stem
     output_dir = output_rootdir / checkpoint_name
     output_dir.mkdir(exist_ok=True, parents=True)
-    save_config(config, output_dir)
 
     test_loader = create_dataloader(config, is_train=False)
 
-    model = create_model(config)
+    model = lenet.Model().to(torch.device(config.device))
     checkpoint = torch.load(config.test.checkpoint, map_location='cpu')
     model.load_state_dict(checkpoint['model'])
 

@@ -1,13 +1,11 @@
 from typing import Tuple, Union
 
-import yacs.config
+from .dataset import create_dataset
 from torch.utils.data import DataLoader
-
-from .datasets import create_dataset
 
 
 def create_dataloader(
-        config: yacs.config.CfgNode,
+        config,
         is_train: bool) -> Union[Tuple[DataLoader, DataLoader], DataLoader]:
     if is_train:
         train_dataset, val_dataset = create_dataset(config, is_train)
@@ -15,7 +13,7 @@ def create_dataloader(
             train_dataset,
             batch_size=config.train.batch_size,
             shuffle=True,
-            num_workers=config.train.train_dataloader.num_workers,
+            num_workers=0,
             pin_memory=config.train.train_dataloader.pin_memory,
             drop_last=config.train.train_dataloader.drop_last,
         )
@@ -23,7 +21,7 @@ def create_dataloader(
             val_dataset,
             batch_size=config.train.batch_size,
             shuffle=False,
-            num_workers=config.train.val_dataloader.num_workers,
+            num_workers=0,
             pin_memory=config.train.val_dataloader.pin_memory,
             drop_last=False,
         )
@@ -33,7 +31,7 @@ def create_dataloader(
         test_loader = DataLoader(
             test_dataset,
             batch_size=config.test.batch_size,
-            num_workers=config.test.dataloader.num_workers,
+            num_workers=0,
             shuffle=False,
             pin_memory=config.test.dataloader.pin_memory,
             drop_last=False,
