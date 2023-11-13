@@ -6,8 +6,10 @@ import numpy as np
 import torch
 import tqdm
 
-from gaze_estimation import (create_dataloader, lenet)
-from gaze_estimation.utils import compute_angle_error, load_config
+from dataset import (create_dataloader)
+import lenet
+from utils import compute_angle_error
+from settings import get_settings
 
 
 def test(model, test_loader, config):
@@ -33,7 +35,7 @@ def test(model, test_loader, config):
 
 
 def main():
-    config = load_config()
+    config = get_settings()
 
     output_rootdir = pathlib.Path(config.test.output_dir)
     checkpoint_name = pathlib.Path(config.test.checkpoint).stem

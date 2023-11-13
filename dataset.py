@@ -5,7 +5,7 @@ import h5py
 import torch
 import torchvision
 import numpy as np
-from .utils import load_and_process_dataset
+from utils import load_and_process_dataset
 from typing import List, Union
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -98,7 +98,7 @@ def create_dataloader(
             train_dataset,
             batch_size=config.train.batch_size,
             shuffle=True,
-            num_workers=0,
+            num_workers=config.train.train_dataloader.num_workers if config.device == 'cuda' else 0,
             pin_memory=config.train.train_dataloader.pin_memory,
             drop_last=config.train.train_dataloader.drop_last,
         )
@@ -106,7 +106,7 @@ def create_dataloader(
             val_dataset,
             batch_size=config.train.batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=config.train.train_dataloader.num_workers if config.device == 'cuda' else 0,
             pin_memory=config.train.val_dataloader.pin_memory,
             drop_last=False,
         )
@@ -116,7 +116,7 @@ def create_dataloader(
         test_loader = DataLoader(
             test_dataset,
             batch_size=config.test.batch_size,
-            num_workers=0,
+            num_workers=config.test.dataloader.num_workers if config.device == 'cuda' else 0,
             shuffle=False,
             pin_memory=config.test.dataloader.pin_memory,
             drop_last=False,

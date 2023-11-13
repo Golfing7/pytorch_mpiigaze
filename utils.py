@@ -8,7 +8,7 @@ import torch
 import os
 import tqdm
 import tarfile
-from .preprocess import process_dataset
+from preprocess import process_dataset
 
 
 def set_seeds(seed: int) -> None:

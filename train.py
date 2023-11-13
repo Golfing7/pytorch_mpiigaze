@@ -6,10 +6,11 @@ import torch
 from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
-from gaze_estimation import (create_dataloader, lenet)
-from gaze_estimation.utils import (AverageMeter, compute_angle_error,
-                                   create_train_output_dir, set_seeds, setup_cudnn)
-from gaze_estimation.settings import get_settings
+from dataset import create_dataloader
+import lenet
+from utils import (AverageMeter, compute_angle_error,
+                   create_train_output_dir, set_seeds, setup_cudnn)
+from settings import get_settings
 
 
 def train(epoch, model, optimizer, scheduler, loss_function, train_loader,
@@ -96,7 +97,6 @@ def main():
     setup_cudnn(config)
 
     output_dir = create_train_output_dir(config)
-    print(config)
 
     train_loader, val_loader = create_dataloader(config, is_train=True)
     model = lenet.Model().to(torch.device(config.device))
