@@ -20,7 +20,7 @@ def set_seeds(seed: int) -> None:
 
 def load_and_process_dataset(config) -> None:
     if not os.path.isdir(config.dataset.dataset_dir):
-        os.mkdir(config.dataset.dataset_dir)
+        os.makedirs(config.dataset.dataset_dir)
 
     path = os.path.join(config.dataset.dataset_dir, 'data.tar.gz')
     if not os.path.exists(path):
@@ -68,8 +68,7 @@ def create_train_output_dir(config) -> pathlib.Path:
     else:
         output_dir = output_root_dir / 'all'
     if output_dir.exists():
-        raise RuntimeError(
-            f'Output directory `{output_dir.as_posix()}` already exists.')
+        os.removedirs(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     return output_dir
 
